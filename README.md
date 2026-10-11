@@ -22,6 +22,7 @@
 | 分支 | 插件 | 说明 |
 |---|---|---|
 | [`plugin/money-credits-card`](../../tree/plugin/money-credits-card) | **金额与积分插件**<br>Money & Credits Card | DSH 侧栏底部「今日消耗 / 剩余」速览卡：**DeepSeek 按金额（¥）**、**WorkBuddy 按积分**分开计量；两行手风琴折叠；**橙灯标出"当前正在消耗哪一个"**；今日合计分列金额与积分，不跨单位相加 |
+| [git-kuangjia](../../tree/git-kuangjia) | **图谱框架**<br>关系图编辑器 | 独立的关系图 / 框架图编辑器：右键框选、节点缩放、6 种布局（力导向/放射状/树状/泳道/网格/环形）、11 个模板、侧栏可拖宽；本地 JSON 存储、可导入导出 SVG/PNG |
 
 ## 用某个插件（以金额与积分插件为例）
 

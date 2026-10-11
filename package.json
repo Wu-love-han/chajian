@@ -1,0 +1,30 @@
+{
+  "name": "dsh-workbuddy-foot-card",
+  "displayName": "DSH WorkBuddy 积分速览卡",
+  "description": "在侧栏底部（DeepSeek 用量卡同处）加一张可折叠的 WorkBuddy 剩余积分卡；两张卡互斥展开，不额外占用高度。",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib"
+  ],
+  "license": "MIT",
+  "dsh": {
+    "engines": {
+      "dsh": ">=0.2.0-rc.2"
+    },
+    "client": {
+      "inject": [],
+      "platform": "web"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.2"
+  }
+}

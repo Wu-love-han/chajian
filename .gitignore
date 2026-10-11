@@ -1,0 +1,11 @@
+# 杂物与本地文件
+*.bak
+*.tmp
+*.log
+*.orig-bak
+
+# 依赖
+node_modules/
+
+# 本地评测/临时脚本
+_*.mjs

@@ -1,9 +1,9 @@
 {
   "name": "dsh-workbuddy-foot-card",
-  "displayName": "DSH WorkBuddy 积分速览卡",
-  "description": "在侧栏底部（DeepSeek 用量卡同处）加一张可折叠的 WorkBuddy 剩余积分卡；两张卡互斥展开，不额外占用高度。",
+  "displayName": "金额与积分插件",
+  "displayNameEn": "Money & Credits Card",
+  "description": "DSH 侧栏底部「今日消耗 / 剩余」速览卡：DeepSeek 按金额（¥）、WorkBuddy 按积分分开计量，两行手风琴折叠，橙灯标出当前正在消耗哪一个。只读、零依赖、不消耗额度。",
   "version": "1.0.0",
-  "private": true,
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -12,12 +12,34 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "lib"
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
   ],
   "license": "MIT",
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "dsh",
+    "usage",
+    "credits",
+    "workbuddy",
+    "foot-card"
+  ],
+  "author": "Wu-love-han",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Wu-love-han/chajian.git"
+  },
+  "homepage": "https://github.com/Wu-love-han/chajian/tree/plugin/money-credits-card#readme",
   "dsh": {
     "engines": {
       "dsh": ">=0.2.0-rc.2"
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
     },
     "client": {
       "inject": [],

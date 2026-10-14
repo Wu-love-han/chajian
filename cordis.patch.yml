@@ -1,0 +1,8 @@
+# 这个文件让插件「装完即生效」。
+#
+# DSH 的 profile 由若干 bundle 层叠加而成，插件声明 dsh.bundle.patch 指向本文件后，
+# `dsh plugin --profile <名字> add <本包>` 会自动把下面这行 Loader 条目插进 profile：
+# 其它插件（例如 dsh-workbuddy-connect）也用同一机制，无需用户手改 cordis.patch.yml。
+- insert:
+    - id: workbuddy-foot-card
+      name: 'dsh-workbuddy-foot-card'

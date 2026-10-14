@@ -357,7 +357,7 @@ usageCard.appendChild(usageToggle)
 base.dom.foot.insertBefore(usageCard, base.dom.settings)
 check(queryAll(base.container, '.wbf-row').length === 2, '永远只有两行', String(queryAll(base.container, '.wbf-row').length))
 // 展开第二行（WorkBuddy）
-queryAll(base.container, '.wbf-row')[1].click()
+queryAll(base.container, '.wbf-rowmain')[1].click()
 await sleep(0)
 check(base.storage.getItem('dsh-workbuddy-foot-card.row') === 'workbuddy', '展开的是 WorkBuddy 行并落盘')
 check(queryAll(base.container, '.wbf-detail').length === 1, '只挂一个明细区', String(queryAll(base.container, '.wbf-detail').length))
@@ -367,7 +367,7 @@ const wbDetail = detailText(base.container)
 check(wbDetail.includes('今日消耗') && wbDetail.includes('积分'), 'WorkBuddy 明细有「今日消耗」且写积分', wbDetail.slice(0, 120))
 check(usageCollapsed === true, '我展开时把用量卡收起（互斥，不叠高）')
 // 切到第一行（DeepSeek）：手风琴，同时只有一个明细
-queryAll(base.container, '.wbf-row')[0].click()
+queryAll(base.container, '.wbf-rowmain')[0].click()
 await sleep(0)
 check(base.storage.getItem('dsh-workbuddy-foot-card.row') === 'deepseek', '切换到 DeepSeek 行')
 check(queryAll(base.container, '.wbf-detail').length === 1, '同一时刻只有一个明细区（手风琴）', String(queryAll(base.container, '.wbf-detail').length))
@@ -377,7 +377,7 @@ check(dsDetail.includes('DeepSeek 今日'), 'DeepSeek 明细有自家今日消�
 check(dsDetail.includes('元'), 'DeepSeek 明细写明「元」（金额口径）')
 check(dsDetail.includes('tokens'), '明细里有今日 token 用量')
 // 再点自己 -> 全部收起
-queryAll(base.container, '.wbf-row')[0].click()
+queryAll(base.container, '.wbf-rowmain')[0].click()
 await sleep(0)
 check(queryAll(base.container, '.wbf-detail').length === 0, '再点自己就全部收起')
 check(base.storage.getItem('dsh-workbuddy-foot-card.row') === null, '收起状态落盘')
@@ -389,7 +389,7 @@ console.log('# 单独计量 + 今日合计')
   const dsRowSolo = rowParts(solo.container, 0)
   check(dsRowSolo.today.includes('¥0.10'), 'DeepSeek 行只算 DeepSeek 自己（¥0.10，不含其它渠道）', String(dsRowSolo.today))
   check(!dsRowSolo.today.includes('0.12'), '不会把当天合计当成 DeepSeek 自己的', String(dsRowSolo.today))
-  queryAll(solo.container, '.wbf-row')[0].click()
+  queryAll(solo.container, '.wbf-rowmain')[0].click()
   await sleep(0)
   const dsDetail = detailText(solo.container)
   check(dsDetail.includes('只算 DeepSeek 自己'), 'DeepSeek 明细写明本行口径', dsDetail.slice(0, 100))
@@ -408,7 +408,7 @@ console.log('# 单独计量 + 今日合计')
   const wbRowTwo = rowParts(twoVariants.container, 1)
   check(wbRowTwo.today.includes('120'), 'WorkBuddy 行显示两版合计消耗（100+20=120）', String(wbRowTwo.today))
   check(wbRowTwo.remain.includes('2,880'), '两版余额相加（2100+780）', String(wbRowTwo.remain))
-  queryAll(twoVariants.container, '.wbf-row')[1].click()
+  queryAll(twoVariants.container, '.wbf-rowmain')[1].click()
   await sleep(0)
   const wbDetail = detailText(twoVariants.container)
   check(wbDetail.includes('国内版') && wbDetail.includes('国际版'), '明细里两版都在', wbDetail.slice(0, 80))
@@ -434,12 +434,12 @@ console.log('# 单独计量 + 今日合计')
   check(totalText.includes('¥0.10') && !totalText.includes('积分'), 'WorkBuddy 未登录时合计只列金额', totalText)
 }
 
-console.log('# 橙灯标出「当前正在消耗哪一个」')
+console.log('# 橙灯：默认跟随「当前正在消耗哪一个」')
 const dsRows = queryAll(base.container, '.wbf-row')
 check(queryAll(dsRows[0], '.wbf-dot.warm').length === 1, 'DeepSeek 是当前 provider -> 它前面是橙灯')
 check(queryAll(dsRows[1], '.wbf-dot.warm').length === 0, 'WorkBuddy 不是橙灯')
 check(queryAll(dsRows[1], '.wbf-dot.on').length === 1, 'WorkBuddy 是绿灯（已登录但不是当前在用）')
-check(queryAll(dsRows[0], '.wbf-tag').length === 1 && queryAll(dsRows[0], '.wbf-tag')[0].textContent.includes('当前在用'), '橙灯那一行有「当前在用」标签', queryAll(dsRows[0], '.wbf-tag')[0].textContent)
+check(queryAll(dsRows[0], '.wbf-tag').length === 1 && queryAll(dsRows[0], '.wbf-tag')[0].textContent.includes('已选中'), '橙灯那一行有「已选中」标签', queryAll(dsRows[0], '.wbf-tag')[0].textContent)
 check(rowParts(base.container, 0).unit.includes('金额'), '橙灯行的单位标注仍在（金额）', String(rowParts(base.container, 0).unit))
 check(rowParts(base.container, 1).unit.includes('积分'), '另一行的单位标注也在（积分）', String(rowParts(base.container, 1).unit))
 const wbActive = await mountCard({ overview: { ...DEEPSEEK_OVERVIEW, current: { provider: 'workbuddy', model: 'glm-5.3', source: 'live' } } })
@@ -449,6 +449,54 @@ check(queryAll(wbRows[0], '.wbf-dot.warm').length === 0, 'DeepSeek 不再是橙�
 check(queryAll(wbRows[1], '.wbf-tag').length === 1, '橙灯行标签跟着走')
 const noCurrent = await mountCard({ overview: { ...DEEPSEEK_OVERVIEW, current: undefined } })
 check(queryAll(noCurrent.container, '.wbf-dot.warm').length === 0, '拿不到当前 provider 时没有橙灯（不瞎标）')
+
+console.log('# 手动切换：点前面的灯在两种计量单位间切')
+{
+  const lamps = queryAll(base.container, '.wbf-dotbtn')
+  check(lamps.length === 2, '两行各有一个可点的灯', String(lamps.length))
+  check(queryAll(base.container, '[data-dsh-pick="deepseek"]').length === 1, 'DeepSeek 的灯带 data-dsh-pick')
+  check(queryAll(base.container, '[data-dsh-pick="workbuddy"]').length === 1, 'WorkBuddy 的灯带 data-dsh-pick')
+
+  // 自动判断是 deepseek；点 WorkBuddy 的灯 -> 切过去
+  queryAll(base.container, '[data-dsh-pick="workbuddy"]')[0].click()
+  await sleep(0)
+  check(base.storage.getItem('dsh-workbuddy-foot-card.picked') === 'workbuddy', '点灯后手动选择落盘', String(base.storage.getItem('dsh-workbuddy-foot-card.picked')))
+  const afterPick = queryAll(base.container, '.wbf-row')
+  check(queryAll(afterPick[1], '.wbf-dot.warm').length === 1, '点 WorkBuddy 的灯 -> 它变橙')
+  check(queryAll(afterPick[0], '.wbf-dot.warm').length === 0, 'DeepSeek 不再是橙灯（被切走了）')
+  check(queryAll(afterPick[1], '.wbf-tag')[0]?.textContent === '已选中', '「已选中」标签跟着移到 WorkBuddy')
+  check(queryAll(base.container, '[data-dsh-detail="workbuddy"]').length === 1, '选中某行时会展开它的明细')
+
+  // 点 DeepSeek 的灯 -> 切过去
+  queryAll(base.container, '[data-dsh-pick="deepseek"]')[0].click()
+  await sleep(0)
+  check(base.storage.getItem('dsh-workbuddy-foot-card.picked') === 'deepseek', '再点另一盏灯 -> 切成 DeepSeek')
+  const afterSwitch = queryAll(base.container, '.wbf-row')
+  check(queryAll(afterSwitch[0], '.wbf-dot.warm').length === 1, 'DeepSeek 变橙')
+  check(queryAll(afterSwitch[1], '.wbf-dot.warm').length === 0, 'WorkBuddy 熄灭')
+  check(queryAll(base.container, '[data-dsh-detail="deepseek"]').length === 1, '明细也跟着切到 DeepSeek')
+
+  // 点已选中的灯 -> 取消手动选择，回到自动跟随
+  queryAll(base.container, '[data-dsh-pick="deepseek"]')[0].click()
+  await sleep(0)
+  const cleared = base.storage.getItem('dsh-workbuddy-foot-card.picked')
+  check(cleared === null || cleared === '', '再点已选中的灯 -> 取消手动选择', String(cleared))
+  check(queryAll(queryAll(base.container, '.wbf-row')[0], '.wbf-dot.warm').length === 1, '取消后回到自动跟随（仍是 DeepSeek）')
+
+  // 点灯与行体是两套按钮，互不干扰
+  queryAll(base.container, '[data-dsh-pick="deepseek"]')[0].click()
+  await sleep(0)
+  check(queryAll(base.container, '.wbf-detail').length === 1, '点灯只切选中并展开，不会误折叠', String(queryAll(base.container, '.wbf-detail').length))
+
+  // 手动选择跨刷新保持，不被自动判断覆盖
+  const persisted = await mountCard({
+    overview: { ...DEEPSEEK_OVERVIEW, current: { provider: 'deepseek', model: 'x', source: 'default' } },
+    seed: { 'dsh-workbuddy-foot-card.picked': 'workbuddy' },
+  })
+  const rowsP = queryAll(persisted.container, '.wbf-row')
+  check(queryAll(rowsP[1], '.wbf-dot.warm').length === 1, '刷新后仍选中手动选的那一行（不被自动判断覆盖）')
+  check(queryAll(rowsP[0], '.wbf-dot.warm').length === 0, '自动判断那行不再抢橙灯')
+}
 
 console.log('# 缺失与失败降级')
 const noUsage = await mountCard({ usageMissing: true })

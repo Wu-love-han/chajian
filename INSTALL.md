@@ -12,17 +12,59 @@
 请你在 Windows 上把它装好，步骤：
 
 1. 先读这个文件夹里的 README.md 和这份 INSTALL.md，按里面写的做，不要自己发明流程。
-2. 运行：powershell -ExecutionPolicy Bypass -File tools\install.ps1
+2. **先问我一句**：要不要装「点灯手动切换计量单位」的可选模式？（见下面那一节，
+   默认不装。我说要才去切 feat/switchable-mode 分支）
+3. 运行：powershell -ExecutionPolicy Bypass -File tools\install.ps1
    - 如果它报 profile 找不到，用 -ProfileName web 再试一次（Web 版）。
    - 如果它报 ERR_PNPM_IGNORED_BUILDS，按提示把 pnpm 打印的 key 加进
      <profile>\pnpm-workspace.yaml 的 allowBuilds 再重跑。
-3. 脚本最后会打印「NEXT STEP」，照它说的做：完全退出 DSH Desktop 再重新打开。
-4. 重启后确认侧栏底部（设置行上方）出现 DeepSeek / WorkBuddy 两行 + 今日合计。
-5. 如果某一行显示「未安装 / 读取失败」，不要修本插件——那是上游插件没装：
+4. 脚本最后会打印「NEXT STEP」，照它说的做：完全退出 DSH Desktop 再重新打开。
+5. 重启后确认侧栏底部（设置行上方）出现 DeepSeek / WorkBuddy 两行 + 今日合计。
+6. 如果某一行显示「未安装 / 读取失败」，不要修本插件——那是上游插件没装：
    - DeepSeek 行需要 @linxin666/dsh-usage
    - WorkBuddy 行需要 dsh-workbuddy-connect
-6. 把每一步的实际输出贴给我，别只说"应该装好了"。
+7. 把每一步的实际输出贴给我，别只说"应该装好了"。
 ```
+
+---
+
+## 【可选】点灯手动切换计量单位 —— 先问用户要不要
+
+**默认安装的是基础版**（`plugin/money-credits-card` 分支）：橙灯只表示"当前正在消耗哪一个"，**不能手动点**。
+
+另有一个**可选模式**单独放在 `feat/switchable-mode` 分支上，功能是：
+**每行前面那盏灯变成可点的切换按钮**，点哪一行哪个变橙，就能在「金额」和「积分」
+两种计量之间随手切换（点已选中的灯则取消，回到自动跟随）。
+
+### AI 必须这样做
+
+1. **先问用户**："基础版的灯只能自动显示当前在消耗哪一个；另有一个可选模式可以把灯变成
+   手动切换按钮（金额 ↔ 积分 随时切）。要装吗？"
+2. **用户说不要 / 没回答 / 不确定 → 装基础版**，直接走上面的正常安装流程。
+   可选模式留在分支里，**不影响任何操作**。
+3. **用户说要 → 改成装那个分支**：
+
+```powershell
+# 取带可选模式的分支
+git clone -b feat/switchable-mode https://github.com/Wu-love-han/chajian.git
+cd chajian
+powershell -ExecutionPolicy Bypass -File tools\install.ps1
+```
+
+从 GitHub 直接装也可以（把分支名换掉即可）：
+
+```powershell
+dsh plugin --profile desktop add github:Wu-love-han/chajian#feat/switchable-mode
+```
+
+### 两个分支的区别（一句话）
+
+| 分支 | 灯的行为 | 说明 |
+|---|---|---|
+| `plugin/money-credits-card`（默认） | 只自动显示"当前在消耗哪一个" | 基础版，推荐大多数人 |
+| `feat/switchable-mode`（可选） | **可点，手动切换金额/积分**，选择会记住 | 想手动控制时才装 |
+
+两个分支的安装方式、依赖、上游要求、自检方式**完全一样**，只是多了那一个交互。
 
 ---
 

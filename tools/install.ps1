@@ -26,6 +26,7 @@ param(
   [string]$ProfileName = 'desktop',
   [string]$ProfileDir = '',
   [string]$DshPath = '',
+  [string]$KeepCopy = '',
   [switch]$SkipInstall
 )
 $ErrorActionPreference = 'Stop'
@@ -41,7 +42,25 @@ elseif (Test-Path (Join-Path (Split-Path -Parent $here) 'package.json')) { $pkgR
 else { Fail 'package.json not found near install.ps1 - run it from inside the plugin folder' }
 
 Say '=== Money & Credits Card - installer ==='
-Say ('plugin  : ' + $pkgRoot)
+Say ('source  : ' + $pkgRoot)
+
+# A local install becomes a directory junction pointing at the source folder, so
+# deleting or moving the source silently breaks the plugin. When the source is a
+# throwaway location (Downloads, a temp extraction folder), stash a copy under a
+# stable path first and install from there.
+if ($KeepCopy -eq '') { $KeepCopy = Join-Path $env:USERPROFILE '.dsh\plugins\dsh-workbuddy-foot-card' }
+$volatile = $false
+foreach ($marker in @($env:TEMP, 'Downloads', 'Downloads\', '\Desktop\')) {
+  if ($marker -and $pkgRoot.StartsWith($marker, [System.StringComparison]::OrdinalIgnoreCase)) { $volatile = $true }
+}
+if ($volatile -and -not $SkipInstall) {
+  Say ('source looks temporary; copying to a stable path: ' + $KeepCopy)
+  if (Test-Path $KeepCopy) { Remove-Item $KeepCopy -Recurse -Force }
+  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $KeepCopy) | Out-Null
+  Copy-Item $pkgRoot $KeepCopy -Recurse -Force
+  $pkgRoot = $KeepCopy
+  Ok ('source is now: ' + $pkgRoot)
+}
 
 # 1. locate the dsh CLI
 if ($DshPath -eq '') {
@@ -142,8 +161,20 @@ if ($bundles -notcontains 'dsh-workbuddy-foot-card') {
 
 $installed = Join-Path $ProfileDir 'node_modules\dsh-workbuddy-foot-card'
 if (-not (Test-Path $installed)) { Fail ('installed copy missing: ' + $installed) }
+# A junction to a now-missing folder still "exists" in PowerShell, so test the
+# payload instead of the folder itself.
 foreach ($f in @('package.json', 'cordis.patch.yml', 'lib\client.js')) {
   if (Test-Path (Join-Path $installed $f)) { Ok ('present: ' + $f) } else { Fail ('missing in installed copy: ' + $f) }
+}
+$item = Get-Item $installed -Force
+if ($item.LinkType) {
+  $target = @($item.Target)[0]
+  if (Test-Path $target) {
+    Ok ('linked to: ' + $target)
+    Warn 'this is a LINK - do not delete or move that folder, or the plugin breaks'
+  } else {
+    Fail ('the link target no longer exists: ' + $target + '  (re-run this installer from the plugin folder)')
+  }
 }
 
 # 5. next steps

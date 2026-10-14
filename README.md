@@ -45,6 +45,7 @@ Get-Content "$env:USERPROFILE\.dsh\profiles\desktop\package.json" -Raw -Encoding
 
 ```powershell
 # 从 GitHub 分支装（本插件在 chajian 仓库的 plugin/money-credits-card 分支）
+# 注意语法：必须是 github:owner/repo#branch（用 # 指分支）
 dsh plugin --profile desktop add github:Wu-love-han/chajian#plugin/money-credits-card
 
 # 或者：先克隆再本地装
@@ -54,6 +55,56 @@ dsh plugin --profile desktop add .
 ```
 
 装完**完全退出 DSH Desktop 再打开**（客户端插件名册在宿主启动时组合，只刷新页面看不到卡片）。
+
+> ⚠️ **不要用 `https://github.com/.../tree/<分支>` 这种网页 URL 去装**。实测 pnpm 会报
+> `Could not resolve plugin to a commit`——网页 URL 不是安装目标。装分支只能用 `#` 语法。
+
+## 上架创意工坊（dsh-market.com）需要什么
+
+**已实测确认的机制**（在 `@linxin666/dsh-client-ui-market` 的客户端代码里）：
+
+```js
+// 广场「安装」按钮的真实行为
+function installCommand(entry) {
+  return `dsh plugin --profile web add ${entry.npm ?? entry.repo ?? entry.id}`;
+}
+```
+
+也就是说，索引里 `repo` 字段会被**原样当作安装参数**。因此要上架必须满足：
+
+| 要求 | 说明 | 当前状态 |
+|---|---|---|
+| `entry.npm` 或 `entry.repo` 能被 pnpm 安装 | 必须写 npm 包名，或 `github:owner/repo#branch` 这种可安装形式 | ⚠️ 见下 |
+| `dsh.bundle.patch` | 装完自动插 Loader 行 | ✅ 已满足 |
+| `dsh.engines.dsh` | 形如 `>=0.2.0-rc.2`（**无空格**） | ✅ 已满足 |
+| `peerDependencies."@deepseek-ai/dsh"` | 与 `engines.dsh` 同值 | ✅ 已满足 |
+
+**上架路径**（社区索引是唯一数据源）：
+
+1. 向 [zhu1090093659/dsh-community-plugins](https://github.com/zhu1090093659/dsh-community-plugins) 的
+   `community.json` 追加一条：
+
+   ```json
+   {
+     "id": "dsh-workbuddy-foot-card",
+     "name": "金额与积分插件",
+     "nameEn": "Money & Credits Card",
+     "author": "Wu-love-han",
+     "description": "DSH 侧栏底部「今日消耗 / 剩余」速览卡：DeepSeek 按金额、WorkBuddy 按积分分开计量，手风琴折叠。",
+     "descriptionEn": "A sidebar foot card showing today's spend: DeepSeek in CNY, WorkBuddy in credits, separately metered.",
+     "repo": "github:Wu-love-han/chajian#plugin/money-credits-card",
+     "category": "utility",
+     "subcategory": "stats"
+   }
+   ```
+
+2. 在该仓跑 `pnpm community:check` 通过校验（校验只要求 `repo` 是字符串，
+   `category`/`subcategory` 取自固定枚举：`utility` 下允许 `cleanup/stats/notify/net`）。
+3. 维护者审核合并后，创意工坊与 dsh-market.com 就会出现这条，点安装即可。
+
+> **更稳的上架方式**：把包发布到 npm（`npm publish`），然后 `entry.npm` 填包名，
+> `repo` 仍填 GitHub 地址。这样广场按钮走 npm 安装，比 git 分支地址更可靠
+> （分支名以后若要改，已发出去的 git 地址就会失效）。
 
 ## 第 2 步：验证（必须做，别跳过）
 

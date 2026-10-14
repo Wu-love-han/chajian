@@ -56,17 +56,25 @@ dsh plugin --profile desktop add github:Wu-love-han/chajian#plugin/money-credits
 powershell -ExecutionPolicy Bypass -File tools\install.ps1
 ```
 
-> **重要**：解压出来的文件夹**别删、别移动**。本地安装用的是 `link:`（软链接），
-> 源目录一没，插件就失效了。要放到固定位置，请**先**把文件夹移到你想放的地方
-> （比如 `D:\DSH插件\money-credits-card`），**再**在那个位置执行安装脚本。
+> **重要（脚本已自动处理，但你要知道原理）**：本地安装产生的是一个**目录联接
+> （Junction）**，指向你执行安装时所在的文件夹。那个文件夹一旦被删或被移动，
+> 插件就会失效（而且目录看起来还在，报错很隐晦）。
+>
+> 所以脚本做了两件保护：
+> 1. 如果它发现源目录在**临时目录 / 下载目录**这类"随时会没"的位置，
+>    会**先自动复制到稳定位置** `~\.dsh\plugins\dsh-workbuddy-foot-card`，再从那里安装
+>    （想换位置用 `-KeepCopy "D:\DSH插件\money-credits-card"`）；
+> 2. 校验阶段不只检查目录存在，还会**检查联接目标是否还在**，目标没了会明确告诉你怎么修。
+>
+> 手动安装时请自己遵守：**先把文件夹放到最终位置，再执行安装**。
 
 ### 情况 3：手动装（上面两种都不行时）
 
 按顺序做，不要跳步：
 
 ```powershell
-# 0) 变量：把这两行改成你的实际情况
-$plugin  = "D:\DSH插件\money-credits-card"                    # 本文件夹的绝对路径（不要删）
+# 0) 变量：把这两行改成你的实际情况（插件目录要放在稳定位置，别放下载目录！）
+$plugin  = "D:\DSH插件\money-credits-card"                    # 先把这个文件夹放好，之后别删
 $profile = "$env:USERPROFILE\.dsh\profiles\desktop"           # Web 版改成 profiles\web
 
 # 1) 让 profile 记住这个插件（用 dsh 自己写，别手改 JSON）
@@ -81,6 +89,9 @@ Pop-Location
 # 3) 检查装好的副本
 Test-Path "$profile\node_modules\dsh-workbuddy-foot-card\lib\client.js"    # 应为 True
 Test-Path "$profile\node_modules\dsh-workbuddy-foot-card\cordis.patch.yml" # 应为 True
+
+# 4) 确认联接目标还在（目标没了插件就废了）
+(Get-Item "$profile\node_modules\dsh-workbuddy-foot-card" -Force).Target
 ```
 
 如果 `dsh plugin add .` 报 `ERR_PNPM_FETCH_404 ... not in the npm registry`：

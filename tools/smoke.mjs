@@ -45,7 +45,7 @@ class Element {
     this.parentNode = null
     this.attributes = {}
     this.classList = new ClassList()
-    this.style = {}
+    this._style = undefined
     this.dataset = {}
     this._text = ''
     this.listeners = {}
@@ -58,6 +58,33 @@ class Element {
   set innerHTML(value) { this._html = String(value); this.children = [] }
   setAttribute(name, value) { this.attributes[name] = String(value) }
   getAttribute(name) { return this.attributes[name] === undefined ? null : this.attributes[name] }
+  removeAttribute(name) { delete this.attributes[name] }
+  hasAttribute(name) { return this.attributes[name] !== undefined }
+  /**
+   * Minimal CSSStyleDeclaration: enough for the plugin's
+   * `style.setProperty(var, value)` / `getPropertyValue(var)` usage, plus plain
+   * property writes like `el.style.display = 'none'`.
+   */
+  get style() {
+    if (this._style === undefined) {
+      const props = {}
+      const target = {
+        setProperty(name, value) { props[name] = String(value) },
+        getPropertyValue(name) { return props[name] === undefined ? '' : props[name] },
+        removeProperty(name) { delete props[name] },
+        get cssText() { return Object.keys(props).map((k) => k + ':' + props[k]).join(';') },
+      }
+      this._style = new Proxy(target, {
+        get: (obj, key) => (key in obj ? obj[key] : (props[key] === undefined ? '' : props[key])),
+        set: (obj, key, value) => {
+          if (key in obj) obj[key] = value
+          else props[key] = String(value)
+          return true
+        },
+      })
+    }
+    return this._style
+  }
   appendChild(child) { child.parentNode = this; this.children.push(child); return child }
   append(...items) { for (const item of items) this.appendChild(item) }
   insertBefore(child, anchor) {
@@ -82,7 +109,58 @@ class Element {
   }
   get lastElementChild() { return this.children.length === 0 ? null : this.children[this.children.length - 1] }
   addEventListener(type, handler) { (this.listeners[type] ??= []).push(handler) }
-  click() { for (const handler of this.listeners.click ?? []) handler({ target: this }) }
+  /**
+   * Dispatch a click the way a browser does: build a real event object (so
+   * handlers may call `stopPropagation`/`preventDefault`), then walk up the
+   * ancestor chain unless propagation was stopped.
+   *
+   * The event object is required, not optional: production code legitimately
+   * calls `event.stopPropagation()` to keep the lamp button from also toggling
+   * the row, and a harness that hands over `{ target }` alone would crash on it
+   * instead of testing the behaviour.
+   */
+  click() {
+    let stopped = false
+    let defaultPrevented = false
+    const event = {
+      type: 'click',
+      target: this,
+      currentTarget: this,
+      stopPropagation() { stopped = true },
+      stopImmediatePropagation() { stopped = true },
+      preventDefault() { defaultPrevented = true },
+      get defaultPrevented() { return defaultPrevented },
+    }
+    let node = this
+    while (node !== null && node !== undefined) {
+      event.currentTarget = node
+      for (const handler of [...(node.listeners.click ?? [])]) {
+        handler(event)
+        if (stopped) break
+      }
+      if (stopped) break
+      node = node.parentNode
+    }
+    return event
+  }
+  /**
+   * Dispatch an arbitrary event to this element only (no bubbling) with a real
+   * event object, so handlers may call preventDefault/stopPropagation.
+   */
+  dispatch(type, props) {
+    const event = {
+      type,
+      target: this,
+      currentTarget: this,
+      stopPropagation() {},
+      stopImmediatePropagation() {},
+      preventDefault() {},
+      defaultPrevented: false,
+      ...(props ?? {}),
+    }
+    for (const handler of [...(this.listeners[type] ?? [])]) handler(event)
+    return event
+  }
   querySelector(selector) { return queryAll(this, selector)[0] ?? null }
   querySelectorAll(selector) { return queryAll(this, selector) }
   getBoundingClientRect() { return { x: 0, y: 0, width: 240, height: 20 } }
@@ -227,8 +305,31 @@ const DEEPSEEK_OVERVIEW = {
 /** Route-aware fetch stub. */
 function makeFetch(options) {
   const calls = []
-  const impl = async (url) => {
+  /** 模型切换路由收到的 POST 记录。 */
+  const modelPosts = []
+  const impl = async (url, init) => {
     calls.push(url)
+    if (url === '/plugins/dsh-workbuddy-foot-card/model') {
+      const method = String(init?.method ?? 'GET').toUpperCase()
+      if (method === 'POST') {
+        let body
+        try {
+          body = JSON.parse(String(init?.body ?? '{}'))
+        } catch {
+          body = undefined
+        }
+        modelPosts.push({ method, body, headers: init?.headers })
+        if (options.modelSwitchMissing === true) return { ok: false, status: 404, json: async () => ({}) }
+        if (options.modelSwitchUnavailable === true) {
+          return { ok: true, status: 503, json: async () => ({ ok: false, error: 'agent-default-model-unavailable' }) }
+        }
+        if (options.modelSwitchRejected === true) {
+          return { ok: true, status: 500, json: async () => ({ ok: false, error: 'save-failed', message: '写入被拒绝' }) }
+        }
+        return { ok: true, status: 200, json: async () => ({ ok: true, applied: { provider: 'p', model: 'm' } }) }
+      }
+      return { ok: true, status: 200, json: async () => ({ ok: true, current: undefined, targets: {} }) }
+    }
     if (url === '/api/dsh-usage/overview') {
       if (options.usageMissing === true) return { ok: false, status: 404, json: async () => ({}) }
       if (options.usageError === true) return { ok: false, status: 500, json: async () => ({}) }
@@ -260,7 +361,30 @@ function makeFetch(options) {
     return { ok: false, status: 404, json: async () => ({}) }
   }
   impl.calls = calls
+  impl.modelPosts = modelPosts
   return impl
+}
+
+/**
+ * Build the client-side ctx.
+ *
+ * The card no longer writes settings itself: switching the global default model is
+ * a host concern, so the client POSTs to its own host route
+ * (`/plugins/dsh-workbuddy-foot-card/model`) and the HOST calls the official
+ * `agentDefaultModel.saveSelection()`. The client ctx therefore only needs the
+ * three cordis hooks it actually uses.
+ *
+ * @param writes - kept for call-site compatibility (unused by the client now).
+ * @param options - unused.
+ */
+function makeHostCtx(writes, options) {
+  void writes
+  void options
+  return {
+    on: () => () => {},
+    effect: (fn) => { fn(); return () => {} },
+    inject: () => undefined,
+  }
 }
 
 async function mountCard(options) {
@@ -271,9 +395,10 @@ async function mountCard(options) {
   vm.createContext(sandbox)
   vm.runInContext(readFileSync(BUNDLE, 'utf8'), sandbox, { filename: BUNDLE })
   const module = sandbox.__loaded.factory(() => { throw new Error('bundle must not require anything') })
-  module.apply({})
+  const writes = []
+  module.apply(makeHostCtx(writes, options))
   await sleep(0)
-  return { dom, storage, fetchImpl, sandbox, module, container: queryAll(dom.body, '[data-dsh-workbuddy-foot-card]')[0] }
+  return { dom, storage, fetchImpl, sandbox, module, writes, container: queryAll(dom.body, '[data-dsh-workbuddy-foot-card]')[0] }
 }
 
 /** Text spans of row N (0 = DeepSeek, 1 = WorkBuddy). */
@@ -498,6 +623,71 @@ console.log('# 手动切换：点前面的灯在两种计量单位间切')
   check(queryAll(rowsP[0], '.wbf-dot.warm').length === 0, '自动判断那行不再抢橙灯')
 }
 
+console.log('# 点灯 = 真的切换全局默认模型（POST 宿主路由）')
+{
+  const swap = await mountCard({})
+  // 自动判断是 deepseek；点 WorkBuddy 的灯 -> 应 POST 切到 workbuddy
+  queryAll(swap.container, '[data-dsh-pick="workbuddy"]')[0].click()
+  await sleep(0)
+  await sleep(0)
+  const posts = swap.fetchImpl.modelPosts
+  check(posts.length === 1, '点灯触发了一次模型切换请求', String(posts.length))
+  const post = posts[0] ?? {}
+  check(post.method === 'POST', '用 POST 调宿主路由', String(post.method))
+  check(post.body?.row === 'workbuddy', '请求体写明要切到哪一套', JSON.stringify(post.body))
+  check(String(post.headers?.['content-type'] ?? '').includes('json'), '带 json content-type', String(post.headers?.['content-type']))
+  check(
+    swap.fetchImpl.calls.includes('/plugins/dsh-workbuddy-foot-card/model'),
+    '打的是本插件自己的宿主路由',
+    swap.fetchImpl.calls.join(','),
+  )
+  const notice = queryAll(swap.container, '[data-dsh-model-notice]')[0]
+  check(notice !== undefined, '切换后卡片上出现结果提示')
+  check(String(notice?.textContent ?? '').includes('已切换默认模型'), '成功提示写明已切换', String(notice?.textContent ?? ''))
+  check(String(notice?.textContent ?? '').includes('deepseek-v4.1-flash'), '提示里给出具体模型名', String(notice?.textContent ?? ''))
+}
+{
+  // 再点另一盏灯 -> 切到 deepseek；点已选中的灯 -> 不动模型
+  const swap = await mountCard({})
+  queryAll(swap.container, '[data-dsh-pick="workbuddy"]')[0].click()
+  await sleep(0); await sleep(0)
+  queryAll(swap.container, '[data-dsh-pick="deepseek"]')[0].click()
+  await sleep(0); await sleep(0)
+  const posts = swap.fetchImpl.modelPosts
+  check(posts.length === 2, '切两次 -> 两次请求', String(posts.length))
+  check(posts[1]?.body?.row === 'deepseek', '第二次切到 deepseek', JSON.stringify(posts[1]?.body))
+  // 点已选中那盏灯 = 取消手动选择，不应再发请求
+  queryAll(swap.container, '[data-dsh-pick="deepseek"]')[0].click()
+  await sleep(0); await sleep(0)
+  check(swap.fetchImpl.modelPosts.length === 2, '点已选中的灯只取消选择、不再改模型', String(swap.fetchImpl.modelPosts.length))
+}
+{
+  // 宿主路由不存在（旧版宿主半区）-> 如实提示失败，且卡片不崩
+  const missing = await mountCard({ modelSwitchMissing: true })
+  queryAll(missing.container, '[data-dsh-pick="workbuddy"]')[0].click()
+  await sleep(0); await sleep(0)
+  const notice = queryAll(missing.container, '[data-dsh-model-notice]')[0]
+  check(notice !== undefined, '404 时仍然给出提示（不静默）')
+  check(String(notice?.textContent ?? '').includes('失败'), '404 提示写明失败', String(notice?.textContent ?? ''))
+  check(queryAll(missing.container, '.wbf-row').length === 2, '失败后卡片依然正常（两行都在）')
+}
+{
+  // 宿主没有 agent-default-model 服务 -> 明确说清原因
+  const unavail = await mountCard({ modelSwitchUnavailable: true })
+  queryAll(unavail.container, '[data-dsh-pick="workbuddy"]')[0].click()
+  await sleep(0); await sleep(0)
+  const notice = queryAll(unavail.container, '[data-dsh-model-notice]')[0]
+  check(String(notice?.textContent ?? '').includes('agent-default-model'), '缺少官方服务时提示指出原因', String(notice?.textContent ?? ''))
+}
+{
+  // 宿主拒绝写入 -> 把宿主给的原因带出来
+  const rejected = await mountCard({ modelSwitchRejected: true })
+  queryAll(rejected.container, '[data-dsh-pick="workbuddy"]')[0].click()
+  await sleep(0); await sleep(0)
+  const notice = queryAll(rejected.container, '[data-dsh-model-notice]')[0]
+  check(String(notice?.textContent ?? '').includes('写入被拒绝'), '宿主拒绝时带出具体原因', String(notice?.textContent ?? ''))
+}
+
 console.log('# 缺失与失败降级')
 const noUsage = await mountCard({ usageMissing: true })
 const noUsageRow = rowParts(noUsage.container, 0)
@@ -514,9 +704,56 @@ check(rowParts(unlimited.container, 1).remain.includes('不限'), '企业不限�
 const objectCredits = await mountCard({ cnCredits: { total: 2100, accounts: [{ remain: 2100 }] } })
 check(rowParts(objectCredits.container, 1).remain.includes('2,100'), '对象形状 { total } 不再被误读成 0', String(rowParts(objectCredits.container, 1).remain))
 
+console.log('# 卡片区高度控制：默认矮 + 可拖（工作区拿大头）')
+{
+  const ctl = await mountCard({})
+  // 容器上打了标记，CSS 才能只作用于它（不猜 DSH 的内部类名）
+  check(ctl.dom.foot.getAttribute('data-dsh-foot-area') !== null, '卡片区被本插件标记（不靠 DSH 类名）', String(ctl.dom.foot.getAttribute('data-dsh-foot-area')))
+  const handle = queryAll(ctl.dom.foot.parentNode, '[data-dsh-foot-area-handle]')[0]
+  check(handle !== undefined, '分隔条已挂上')
+  check(handle?.nextElementSibling === ctl.dom.foot, '分隔条插在卡片区正上方', String(handle?.nextElementSibling === ctl.dom.foot))
+  // 默认值：偏矮（工作区拿大头），且没存过时就是这个默认
+  check(ctl.storage.getItem('dsh-workbuddy-foot-card.max') === null, '没拖过时不写盘（用默认值）')
+  check(String(ctl.dom.foot.style.getPropertyValue('max-height')) === '172px', '默认上限 172px（偏矮）', String(ctl.dom.foot.style.getPropertyValue('max-height')))
+
+  // 往下拖 = 卡片区变高
+  handle.dispatch('pointerdown', { clientY: 100, pointerId: 1 })
+  handle.dispatch('pointermove', { clientY: 180 })
+  check(String(ctl.dom.foot.style.getPropertyValue('max-height')) === '252px', '下拖 80px -> 上限 +80', String(ctl.dom.foot.style.getPropertyValue('max-height')))
+  handle.dispatch('pointerup', {})
+  check(ctl.storage.getItem('dsh-workbuddy-foot-card.max') === '252', '松手后落盘', String(ctl.storage.getItem('dsh-workbuddy-foot-card.max')))
+
+  // 往上拖回来
+  handle.dispatch('pointerdown', { clientY: 300, pointerId: 1 })
+  handle.dispatch('pointermove', { clientY: 200 })
+  check(String(ctl.dom.foot.style.getPropertyValue('max-height')) === '152px', '上拖 100px -> 上限 -100', String(ctl.dom.foot.style.getPropertyValue('max-height')))
+
+  // 夹取：不能小于下限
+  handle.dispatch('pointermove', { clientY: -9999 })
+  check(String(ctl.dom.foot.style.getPropertyValue('max-height')) === '40px', '再小夹到下限 40px', String(ctl.dom.foot.style.getPropertyValue('max-height')))
+  // 夹取：不能大于上限
+  handle.dispatch('pointermove', { clientY: 99999 })
+  check(String(ctl.dom.foot.style.getPropertyValue('max-height')) === '520px', '再大夹到上限 520px', String(ctl.dom.foot.style.getPropertyValue('max-height')))
+  handle.dispatch('pointerup', {})
+
+  // 双击复位
+  handle.dispatch('dblclick', {})
+  check(String(ctl.dom.foot.style.getPropertyValue('max-height')) === '172px', '双击复位到 172px', String(ctl.dom.foot.style.getPropertyValue('max-height')))
+  check(ctl.storage.getItem('dsh-workbuddy-foot-card.max') === '172', '复位也落盘', String(ctl.storage.getItem('dsh-workbuddy-foot-card.max')))
+
+  // 持久化：下次挂载沿用
+  const again = await mountCard({ seed: { 'dsh-workbuddy-foot-card.max': '300' } })
+  check(String(again.dom.foot.style.getPropertyValue('max-height')) === '300px', '刷新后沿用上次拖的高度', String(again.dom.foot.style.getPropertyValue('max-height')))
+  // 脏数据兜底
+  const dirty = await mountCard({ seed: { 'dsh-workbuddy-foot-card.max': 'not-a-number' } })
+  check(String(dirty.dom.foot.style.getPropertyValue('max-height')) === '172px', '脏数据回落默认值', String(dirty.dom.foot.style.getPropertyValue('max-height')))
+  const outOfRange = await mountCard({ seed: { 'dsh-workbuddy-foot-card.max': '99999' } })
+  check(String(outOfRange.dom.foot.style.getPropertyValue('max-height')) === '520px', '越界值夹回区间', String(outOfRange.dom.foot.style.getPropertyValue('max-height')))
+}
+
 console.log('# 幂等')
 const repeat = await mountCard({})
-repeat.module.apply({})
+repeat.module.apply(makeHostCtx([]))
 check(queryAll(repeat.dom.body, '[data-dsh-workbuddy-foot-card]').length === 1, '重复 apply 不会挂第二张卡')
 
 console.log('')

@@ -480,7 +480,7 @@ let usageCollapsed = false
 usageToggle.addEventListener('click', () => { usageCollapsed = true })
 usageCard.appendChild(usageToggle)
 base.dom.foot.insertBefore(usageCard, base.dom.settings)
-check(queryAll(base.container, '.wbf-row').length === 2, '永远只有两行', String(queryAll(base.container, '.wbf-row').length))
+check(queryAll(base.container, '.wbf-row').length === 3, '固定三行（DeepSeek / WorkBuddy / 智谱 GLM）', String(queryAll(base.container, '.wbf-row').length))
 // 展开第二行（WorkBuddy）
 queryAll(base.container, '.wbf-rowmain')[1].click()
 await sleep(0)
@@ -578,9 +578,10 @@ check(queryAll(noCurrent.container, '.wbf-dot.warm').length === 0, '拿不到当
 console.log('# 手动切换：点前面的灯在两种计量单位间切')
 {
   const lamps = queryAll(base.container, '.wbf-dotbtn')
-  check(lamps.length === 2, '两行各有一个可点的灯', String(lamps.length))
+  check(lamps.length === 3, '三行各有一个可点的灯', String(lamps.length))
   check(queryAll(base.container, '[data-dsh-pick="deepseek"]').length === 1, 'DeepSeek 的灯带 data-dsh-pick')
   check(queryAll(base.container, '[data-dsh-pick="workbuddy"]').length === 1, 'WorkBuddy 的灯带 data-dsh-pick')
+  check(queryAll(base.container, '[data-dsh-pick="zhipu"]').length === 1, '智谱 GLM 的灯带 data-dsh-pick')
 
   // 自动判断是 deepseek；点 WorkBuddy 的灯 -> 切过去
   queryAll(base.container, '[data-dsh-pick="workbuddy"]')[0].click()
@@ -669,7 +670,7 @@ console.log('# 点灯 = 真的切换全局默认模型（POST 宿主路由）')
   const notice = queryAll(missing.container, '[data-dsh-model-notice]')[0]
   check(notice !== undefined, '404 时仍然给出提示（不静默）')
   check(String(notice?.textContent ?? '').includes('失败'), '404 提示写明失败', String(notice?.textContent ?? ''))
-  check(queryAll(missing.container, '.wbf-row').length === 2, '失败后卡片依然正常（两行都在）')
+  check(queryAll(missing.container, '.wbf-row').length === 3, '失败后卡片依然正常（三行都在）')
 }
 {
   // 宿主没有 agent-default-model 服务 -> 明确说清原因
@@ -716,24 +717,25 @@ console.log('# 卡片区高度控制：默认矮 + 可拖（工作区拿大头�
   check(ctl.storage.getItem('dsh-workbuddy-foot-card.max') === null, '没拖过时不写盘（用默认值）')
   check(String(ctl.dom.foot.style.getPropertyValue('max-height')) === '172px', '默认上限 172px（偏矮）', String(ctl.dom.foot.style.getPropertyValue('max-height')))
 
-  // 往下拖 = 卡片区变高
-  handle.dispatch('pointerdown', { clientY: 100, pointerId: 1 })
-  handle.dispatch('pointermove', { clientY: 180 })
-  check(String(ctl.dom.foot.style.getPropertyValue('max-height')) === '252px', '下拖 80px -> 上限 +80', String(ctl.dom.foot.style.getPropertyValue('max-height')))
-  handle.dispatch('pointerup', {})
-  check(ctl.storage.getItem('dsh-workbuddy-foot-card.max') === '252', '松手后落盘', String(ctl.storage.getItem('dsh-workbuddy-foot-card.max')))
-
-  // 往上拖回来
+  // 意图：手柄在卡片区上沿，**往上拖 = 拖大**（上沿抬起来，卡片区变高）。
+  // 屏幕上 clientY 往下增大，所以往上拖 = clientY 变小 = 上限变大。
   handle.dispatch('pointerdown', { clientY: 300, pointerId: 1 })
-  handle.dispatch('pointermove', { clientY: 200 })
-  check(String(ctl.dom.foot.style.getPropertyValue('max-height')) === '152px', '上拖 100px -> 上限 -100', String(ctl.dom.foot.style.getPropertyValue('max-height')))
+  handle.dispatch('pointermove', { clientY: 200 })   // 上移 100px
+  check(String(ctl.dom.foot.style.getPropertyValue('max-height')) === '272px', '往上拖 100px -> 上限 +100（拖大）', String(ctl.dom.foot.style.getPropertyValue('max-height')))
+  handle.dispatch('pointerup', {})
+  check(ctl.storage.getItem('dsh-workbuddy-foot-card.max') === '272', '松手后落盘', String(ctl.storage.getItem('dsh-workbuddy-foot-card.max')))
 
-  // 夹取：不能小于下限
+  // 往下拖 = 拖小（不能反）
+  handle.dispatch('pointerdown', { clientY: 100, pointerId: 1 })
+  handle.dispatch('pointermove', { clientY: 180 })   // 下移 80px
+  check(String(ctl.dom.foot.style.getPropertyValue('max-height')) === '192px', '往下拖 80px -> 上限 -80（拖小）', String(ctl.dom.foot.style.getPropertyValue('max-height')))
+
+  // 夹取：拖到天上也不能超过上限（往上拖 = 变大）
   handle.dispatch('pointermove', { clientY: -9999 })
-  check(String(ctl.dom.foot.style.getPropertyValue('max-height')) === '40px', '再小夹到下限 40px', String(ctl.dom.foot.style.getPropertyValue('max-height')))
-  // 夹取：不能大于上限
+  check(String(ctl.dom.foot.style.getPropertyValue('max-height')) === '520px', '拖到顶夹到上限 520px', String(ctl.dom.foot.style.getPropertyValue('max-height')))
+  // 夹取：拖到地下也不能小于下限（往下拖 = 变小）
   handle.dispatch('pointermove', { clientY: 99999 })
-  check(String(ctl.dom.foot.style.getPropertyValue('max-height')) === '520px', '再大夹到上限 520px', String(ctl.dom.foot.style.getPropertyValue('max-height')))
+  check(String(ctl.dom.foot.style.getPropertyValue('max-height')) === '40px', '拖到底夹到下限 40px', String(ctl.dom.foot.style.getPropertyValue('max-height')))
   handle.dispatch('pointerup', {})
 
   // 双击复位

@@ -3,7 +3,7 @@
   "displayName": "金额与积分插件",
   "displayNameEn": "Money & Credits Card",
   "description": "DSH 侧栏底部「今日消耗 / 剩余」速览卡：DeepSeek 按金额（¥）、WorkBuddy 按积分分开计量，两行手风琴折叠，橙灯标出当前正在消耗哪一个。只读、零依赖、不消耗额度。",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "main": "lib/index.js",
   "exports": {

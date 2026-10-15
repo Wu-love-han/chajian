@@ -180,8 +180,54 @@ dsh plugin --profile desktop add .          # 回到插件目录里执行
 | 安装报 `invalid profile name` | 把**路径**当成 profile 名传了 | `--profile` 只接受名字（`desktop` / `web`），不是路径 |
 | 安装报 `Could not resolve plugin to a commit` | 用了 `/tree/分支` 网页地址 | 用 `github:owner/repo#branch`，或本地目录 |
 | 安装报 `ERR_PNPM_IGNORED_BUILDS` | profile 缺构建白名单 | 按 pnpm 提示把 key 加进 `<profile>\pnpm-workspace.yaml` 的 `allowBuilds`，再重跑 |
-| 移动/删掉了插件文件夹后失效 | 本地安装是 `link:` 软链接 | 把文件夹放回原位，或在新位置重新 `dsh plugin add .` |
+| 移动/删掉了插件文件夹后失效 | 本地安装是 `link:` 软链接 | 把文件夹放回原位，或在新位置重新 `dsh plugin add .`；**推荐改用 `dsh plugin add github:Wu-love-han/chajian#<分支>`**，装出来是真实目录，源目录删了也不坏 |
+| **DSH 一打开就进恢复模式**，日志报 `duplicate loader entry id "workbuddy-foot-card"` | profile 的 `cordis.patch.yml` 里**手动**插了一份 Loader 行，**同时**插件自带的 `dsh.bundle.patch` 又插了一份 —— 同一个 id 出现两次，DSH 拒绝组合 profile | 见下面「一打开就崩溃」一节 |
 | 想彻底卸载 | — | `dsh plugin --profile desktop remove dsh-workbuddy-foot-card`，然后完全重启 |
+
+---
+
+## 「一打开就崩溃 / 进恢复模式」怎么修
+
+**症状**（DSH 的启动日志里）：
+
+```
+dsh-plugin-desktop: duplicate loader entry id "workbuddy-foot-card" in the composed profile
+启动停止位置: 插件配置组合
+```
+
+**原因**：这条 Loader 行被插了**两次**。本插件声明了 `dsh.bundle.patch`（自带
+`cordis.patch.yml`），`dsh plugin add` 会**自动**把这条行插进 profile；如果 profile
+自己的 `cordis.patch.yml` 里**还**手写了一份同样 id 的 `- insert:`，组合后就有两个
+同 id 条目，DSH 直接拒绝启动。
+
+> 历史原因：本插件**早期**没有自带 `bundle.patch`，那时代的安装说明要求手改
+> profile 的 `cordis.patch.yml`。后来插件改成"装完即生效"（自带 patch）后，那份手写的
+> 就成了重复源。**现在不要手写 Loader 行。**
+
+**修法**（按顺序）：
+
+```powershell
+# 1) 打开 profile 的 patch，找到那段手写的 insert 并删掉
+notepad "$env:USERPROFILE\.dsh\profiles\desktop\cordis.patch.yml"
+#    要删的是长这样的一段（连同上面的注释）：
+#      # WorkBuddy foot card (added by dsh-workbuddy-foot-card install.ps1)
+#      - insert:
+#          - id: workbuddy-foot-card
+#            name: 'dsh-workbuddy-foot-card'
+
+# 2) 确认删干净了（应为 0）
+Select-String -Path "$env:USERPROFILE\.dsh\profiles\desktop\cordis.patch.yml" -Pattern 'workbuddy-foot-card'
+
+# 3) 重跑安装脚本：它会自动检测并清除这类陈旧行，并校验"只插一次"
+powershell -ExecutionPolicy Bypass -File tools\install.ps1
+```
+
+`tools\install.ps1` 自带两重保护：装之前**自动清除**陈旧的同 id 手写行（先备份成
+`cordis.patch.yml.stale-insert-<时间戳>`），装之后**断言**该 id 只被插一次；不满足就
+直接报错并告诉你去删哪一段。
+
+**别踩的坑**：`dsh plugin add` 已经会写 profile 的 `dependencies` 和
+`dsh.profile.bundles`，Loader 行由包自带的 patch 提供 —— **这两样都不要手工补**。
 
 ---
 

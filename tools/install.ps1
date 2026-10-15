@@ -100,6 +100,57 @@ if (-not (Test-Path (Join-Path $ProfileDir 'package.json'))) {
 }
 Ok ('profile name: ' + $profileName)
 
+# 2b. heal a stale manual Loader row (crash prevention)
+#
+# This package ships its own cordis.patch.yml (declared as dsh.bundle.patch), and
+# `dsh plugin add` already inserts that Loader row through the bundle. An OLDER
+# version of this script ALSO appended the same row to the profile's own
+# cordis.patch.yml. With both present the composed profile carries the id twice:
+#
+#     dsh-plugin-desktop: duplicate loader entry id "workbuddy-foot-card"
+#
+# and DSH refuses to compose, dropping into recovery mode. Remove any such manual
+# block here, so re-running this installer always converges to exactly ONE insert.
+$profilePatch = Join-Path $ProfileDir 'cordis.patch.yml'
+if (Test-Path $profilePatch) {
+  try {
+    $patchLines = [System.IO.File]::ReadAllLines($profilePatch, [System.Text.Encoding]::UTF8)
+    $idIndex = -1
+    for ($i = 0; $i -lt $patchLines.Count; $i++) {
+      if ($patchLines[$i] -match '^[ \t]*-[ \t]*id:[ \t]*workbuddy-foot-card[ \t]*$') { $idIndex = $i; break }
+    }
+    if ($idIndex -ge 0) {
+      $start = $idIndex
+      for ($i = $idIndex - 1; $i -ge 0 -and $i -ge $idIndex - 20; $i--) {
+        if ($patchLines[$i] -match '^[ \t]*-[ \t]*insert:[ \t]*$') { $start = $i; break }
+      }
+      while ($start - 1 -ge 0 -and $patchLines[$start - 1] -match '^[ \t]*#.*workbuddy') { $start-- }
+      $insertIndent = ([regex]::Match($patchLines[$start], '^([ \t]*)')).Groups[1].Value.Length
+      $end = $idIndex
+      for ($i = $idIndex + 1; $i -lt $patchLines.Count; $i++) {
+        $line = $patchLines[$i]
+        if ($line.Trim() -eq '') { $end = $i; continue }
+        $indent = ([regex]::Match($line, '^([ \t]*)')).Groups[1].Value.Length
+        if ($indent -le $insertIndent) { break }
+        $end = $i
+      }
+      $backup = $profilePatch + '.stale-insert-' + (Get-Date -Format 'yyyyMMdd-HHmmss')
+      Copy-Item $profilePatch $backup -Force
+      $kept = @()
+      for ($i = 0; $i -lt $patchLines.Count; $i++) {
+        if ($i -lt $start -or $i -gt $end) { $kept += $patchLines[$i] }
+      }
+      [System.IO.File]::WriteAllText($profilePatch, (($kept -join "`r`n") + "`r`n"), (New-Object System.Text.UTF8Encoding($false)))
+      Warn ('removed a STALE manual Loader row from the profile patch (backup: ' + (Split-Path -Leaf $backup) + ')')
+      Ok 'that stale row is exactly what made DSH report "duplicate loader entry id"; the bundle inserts it for you'
+    } else {
+      Ok 'profile patch carries no manual Loader row (good)'
+    }
+  } catch {
+    Warn ('could not inspect the profile patch: ' + $_.Exception.Message)
+  }
+}
+
 # 3. install
 # If a previous install recorded a bare version (e.g. "1.0.0") from a time when the
 # package did not exist on npm, pnpm would try the registry and fail with a 404.
@@ -138,6 +189,24 @@ install failed. Common causes:
 '@
   }
   Ok 'dsh plugin add finished'
+
+  # 3b. prove the id is inserted exactly ONCE - the invariant whose violation
+  #     drops DSH into recovery mode with "duplicate loader entry id".
+  $manualInserts = 0
+  try {
+    $txt = [System.IO.File]::ReadAllText($profilePatch, [System.Text.Encoding]::UTF8)
+    $manualInserts = ([regex]::Matches($txt, '^[ \t]*-[ \t]*id:[ \t]*workbuddy-foot-card[ \t]*$', 'Multiline')).Count
+  } catch { $manualInserts = 0 }
+  if ($manualInserts -ne 0) {
+    Fail @'
+the profile patch STILL carries a manual Loader row for this plugin.
+That duplicates the row the bundle inserts, and DSH will refuse to boot with
+"duplicate loader entry id". Delete that "- insert:" block from:
+  <profile>\cordis.patch.yml
+(then re-run this installer).
+'@
+  }
+  Ok 'exactly one Loader insert (supplied by the bundle, none by hand)'
 }
 
 # 4. verify

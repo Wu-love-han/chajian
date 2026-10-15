@@ -28,10 +28,16 @@
 > 一段可以直接复制给 AI 的指令、三种安装方式（GitHub 分支 / 下载 ZIP / 手动）、
 > 前置条件表、一张排障表、卸载步骤，以及"这个插件会不会动我的东西"的说明。
 
-> ⚠️ **注意：你现在就在【可选模式】分支上（`feat/switchable-mode`）** ——
-> 这个分支**已经包含**「点灯手动切换计量单位」，不需要再问用户要不要装了。
-> 如果用户其实只想要基础版（灯只自动显示、不能点），改用 `plugin/money-credits-card` 分支。
-> 详见 [INSTALL.md 的「可选」一节](./INSTALL.md#可选点灯手动切换计量单位--先问用户要不要)。
+> ⚠️ **你现在在 `feat/model-switching` 分支上** —— 它已经包含：
+> ①「点灯切换计量单位」+**真的切换全局默认模型**；②底部卡片区**默认矮 + 可拖**。
+> 用户只想要基础版（灯只自动显示、不能点、不改模型）就用 `plugin/money-credits-card` 分支；
+> 只想要"可点但不改模型"用 `feat/switchable-mode`。
+
+> 🚨 **绝对不要手写 Loader 行**。本包自带 `dsh.bundle.patch`，`dsh plugin add` 会**自动**
+> 把 `- id: workbuddy-foot-card` 插进 profile；如果你**再**往 profile 的 `cordis.patch.yml`
+> 手写一份同 id 的 `- insert:`，DSH 会因为 `duplicate loader entry id` **拒绝启动、进恢复模式**。
+> （本包 v1.0 时代的旧说明要求手改，已作废。）`tools/install.ps1` 现在会自动清除这类陈旧手写行
+> 并断言"只插一次"。详见 [INSTALL.md 的「一打开就崩溃」一节](./INSTALL.md#一打开就崩溃--进恢复模式怎么修)。
 
 ## 第 0 步：先确认宿主环境
 
